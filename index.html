@@ -1313,7 +1313,7 @@ s.jsx("div", {
     })
 }
 // Waiting CMD export: tabs and line breaks inside values must not shift Excel columns.
-function __pvWaitingCells(o,stores){return [o.produit,o.qte,o.nom,o.telephone,o.adresse,o.ville,o.prix,__pvBoutique(o.agent,stores),o.remarques].map(v=>String(v??"").replace(/[\t\r\n]+/g," ").trim())}
+function __pvWaitingCells(o,stores){return [o.produit,o.qte,o.nom,o.telephone,o.ville,o.adresse,o.prix,__pvBoutique(o.agent,stores)].map(v=>String(v??"").replace(/[\t\r\n]+/g," ").trim())}
 function __pvWaitingTsv(rows,stores){return rows.map(o=>__pvWaitingCells(o,stores).join("\t")).join("\r\n")}
 function __PvWaitingCmd({onOpen:e}) {
   const {orders:n}=Xt();
@@ -1369,7 +1369,7 @@ function __PvWaitingCmd({onOpen:e}) {
   const copySelected=async()=>{
     if(!chosen.length)return;
     const missing=chosen.filter(o=>!__pvBoutique(o.agent,stores)).length;
-    if(missing&&!confirm(`${missing} طلبية ما عندهاش Boutique معروفة. خانة Store غتبقى فارغة. واش تكمل النسخ؟`))return;
+    if(missing&&!confirm(`${missing} طلبية ما عندهاش Boutique معروفة. خانة Botique غتبقى فارغة. واش تكمل النسخ؟`))return;
     const text=__pvWaitingTsv(chosen,stores);
     try{
       if(navigator.clipboard&&navigator.clipboard.writeText)await navigator.clipboard.writeText(text);
@@ -1391,7 +1391,7 @@ function __PvWaitingCmd({onOpen:e}) {
       m!=="بلا وكيلة"&&s.jsx("button",{type:"button",onClick:()=>e(m),className:"pv-wait-open",children:"فتح صفحة البنت ←"})
     ]}),
     s.jsx("div",{className:"pv-wait-table-scroll",children:s.jsxs("table",{className:"pv-wait-table",dir:"ltr",children:[
-      s.jsx("thead",{className:"pv-wait-thead",children:s.jsxs("tr",{children:[s.jsx("th",{className:"pv-wait-th",children:"✓"}),...["Product","Quantity","Customer","Phone","Address","City","Price","Store","Note"].map(t=>s.jsx("th",{className:"pv-wait-th",children:t},t))]})}),
+      s.jsx("thead",{className:"pv-wait-thead",children:s.jsxs("tr",{children:[s.jsx("th",{className:"pv-wait-th",children:"✓"}),...["Produit","Qte","Nom & Prénom","Télephone","Ville","Address","Prix","Botique"].map(t=>s.jsx("th",{className:"pv-wait-th",children:t},t))]})}),
       s.jsx("tbody",{children:h.map(row)})
     ]})})
   ]},m);
@@ -1443,7 +1443,7 @@ function __PvWaitingCmd({onOpen:e}) {
     s.jsxs("span",{className:"pv-wait-result-count",children:[f.length," من ",a.length," طلبية · ",chosen.length," محددة"]}),
     s.jsx("button",{type:"button",className:"pv-wait-copy-btn",onClick:toggleVisible,disabled:!f.length,children:allVisible?"إلغاء تحديد الظاهر":"تحديد كل الظاهر"}),
     s.jsx("button",{type:"button",className:"pv-wait-copy-btn is-copy",onClick:copySelected,disabled:!chosen.length,children:`📋 نسخ المحدد لـ Excel (${chosen.length})`}),
-    s.jsx("span",{className:"pv-wait-copy-hint",children:"لصق فـ Excel من A2؛ خَلّي عمود Phone بصيغة Texte باش يبقى الصفر الأول."})
+    s.jsx("span",{className:"pv-wait-copy-hint",children:"لصق فـ Excel من A2؛ خَلّي عمود Télephone بصيغة Texte باش يبقى الصفر الأول."})
   ]}):null;
   const noResults=s.jsx("div",{className:"pv-wait-empty is-search",children:s.jsxs("div",{children:[s.jsx("div",{className:"text-4xl",children:"🔎"}),s.jsx("h2",{children:"ما لقينا حتى نتيجة"}),s.jsx("button",{type:"button",onClick:()=>setQ(""),children:"مسح البحث"})]})});
   const empty=s.jsx("div",{className:"pv-wait-empty",children:s.jsxs("div",{children:[
