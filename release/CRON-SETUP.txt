@@ -7,3 +7,4 @@ Paraveda CRM — Digylog deconnecte, suivi manuel
 5. Les anciennes valeurs ne sont pas modifiees ni effacees automatiquement. Les demandes deja en cours avant deploiement peuvent encore se terminer avec l'ancien code.
 6. Demandez a Hostinger de desactiver le cron digylog_sync et a Digylog de desactiver la livraison des webhooks; le code ne peut pas arreter les demandes a leur source ni empecher le pare-feu de les bloquer avant le CRM.
 7. Rechargez le site et testez une commande de test. La resolution automatique des QR Digylog opaques dans Retours n'est plus disponible; utilisez le tracking deja enregistre dans le CRM.
+8. Envoi des brouillons: l'Agent est automatiquement renseigne a partir de la page de l'agent pour l'administrateur, ou de l'agent associe au compte utilisateur. Sans agent associe, la publication est refusee. Les commandes deja publiees ne sont pas reattribuees.
