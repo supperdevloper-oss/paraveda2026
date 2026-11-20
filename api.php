@@ -86,7 +86,7 @@ $SECRET = '8c907fc0f4ffe0b9775a6b7c3c0fc7700e5724c0d78343df';
 /* ---------- نسخة السيرفر ----------
  * كنرجعوها فـ export=version وفـ جواب digylog_sync، باش نعرفو بالضبط
  * أشمن api.php خدام دابا فـ production (ufiq le déploiement ma bditch). */
-define('CRM_API_VERSION', '3.107');
+define('CRM_API_VERSION', '3.108');
 /* جيل المرسل: ملي كيتبدل الكود، كل الطلبيات لي سبقت كتجرب من جديد.
  * (ماشي كيبقاوش محبوسة بـ 20 محاولة قديمة ولا بـ backoff طويل.) */
 define('CRM_DL_SENDER_GEN', 4);
@@ -2249,6 +2249,32 @@ function crm_dl_send_chunk($token,$store,$network,$rows,$status,$sentTyp,$route)
   return $out;
 }
 
+/* The scheduled sync is limited independently of the browser's live CRM sync
+ * and automatic sender. A non-blocking lock is held across the entire run,
+ * including status sync. The timestamp is recorded BEFORE the work starts so
+ * a crash or failed call cannot create a retry storm every minute. */
+function crm_dl_periodic_sync() {
+  $interval = 30 * 60;
+  $fh = @fopen(crm_dl_state_path('.dl-periodic.lock'), 'c+');
+  if (!$fh) return array('ok'=>false, 'err'=>'periodic-lock-unavailable');
+  if (!@flock($fh, LOCK_EX | LOCK_NB)) { @fclose($fh); return array('ok'=>true, 'skipped'=>'busy'); }
+  try {
+    @rewind($fh);
+    $last = (int)trim((string)stream_get_contents($fh));
+    $now = time();
+    if ($last > 0 && $now >= $last && $now - $last < $interval)
+      return array('ok'=>true, 'skipped'=>'throttled', 'retryAfter'=>$interval-($now-$last));
+    if (!@rewind($fh) || !@ftruncate($fh, 0) || @fwrite($fh, (string)$now) === false || !@fflush($fh))
+      return array('ok'=>false, 'err'=>'periodic-state-write-failed');
+    $result = crm_dl_run(false);
+    $result['periodicIntervalSeconds'] = $interval;
+    return $result;
+  } finally {
+    @flock($fh, LOCK_UN);
+    @fclose($fh);
+  }
+}
+
 /* Automatic / manual Digylog sender.
  * $forceSentType : 0 => Commandes non envoyées (add only, never dispatched).
  * $includeExisting : also send the Confirmé orders that were confirmed before.
@@ -2267,6 +2293,14 @@ function crm_dl_run($dry = false,$forceSentType=null,$includeExisting=false,$wit
   if (!$dry && !$auto && empty($c['enabled'])) return $withStatus?array('ok'=>true,'skipped'=>'sending-disabled','trackingSync'=>crm_tracking_auto_sync(30),'deliveredSync'=>crm_delivery_sync_batch(20)):array('ok'=>true,'skipped'=>'sending-disabled','sent'=>0);
   if (!$dry && $token === '') { crm_dl_diag_save(crm_dl_diag_build(array('lastRun'=>array('ok'=>false,'err'=>'no-token','sent'=>0,'when'=>(int)(microtime(true)*1000))))); return array('ok'=>false, 'err'=>'no-token'); }
   if ($since <= 0 && !$dry && !$includeExisting) return array('ok'=>false, 'err'=>'not-enabled-properly');
+  // Acquire before network discovery: concurrent senders must not overlap even
+  // while a slow remote request is running. Fail closed if locking is unavailable.
+  $runLock = null;
+  if (!$dry) {
+    $runLock = @fopen(crm_dl_state_path('.dl.lock'), 'c');
+    if (!$runLock) return array('ok'=>false, 'err'=>'send-lock-unavailable');
+    if (!@flock($runLock, LOCK_EX | LOCK_NB)) { @fclose($runLock); return array('ok'=>true, 'skipped'=>'busy'); }
+  }
   /* شبكة (transporteur) غير موجودة فـالحساب => ناخدو أول شبكة متوفرة،
      حيت Digylog كيرفض الطلبية كاملة إلا كانت الشبكة غالطة. */
   if (!$dry && $token !== '') {
@@ -2276,9 +2310,6 @@ function crm_dl_run($dry = false,$forceSentType=null,$includeExisting=false,$wit
       if (!in_array((string)$network, $ids, true)) $network = (int)$nets[0]['id'];
     }
   }
-
-  $runLock = @fopen(crm_dl_state_path('.dl.lock'), 'c');
-  if ($runLock && !$dry && !@flock($runLock, LOCK_EX | LOCK_NB)) return array('ok'=>true, 'skipped'=>'busy');
 
   /* 1) read (short lock) + pick the orders */
   $fh = @fopen($LOCK_FILE, 'c'); if ($fh) @flock($fh, LOCK_EX);
@@ -2729,7 +2760,7 @@ if ($m === 'GET') {
   // v3.101: cron ديال Digylog: api.php?action=digylog_sync&token=...
   if (isset($_GET['action']) && $_GET['action'] === 'digylog_sync') {
     if (!hash_equals($SECRET, crm_token())) crm_out(array('ok'=>false, 'err'=>'token'), 403);
-    crm_out(crm_dl_run(false));
+    crm_out(crm_dl_periodic_sync());
   }
   // v3.41: la lecture exige aussi le token (avant: n'importe qui avec l'URL téléchargeait tous les clients)
   if (!hash_equals($SECRET, crm_token())) crm_out(array('ok'=>false, 'err'=>'token'), 403);

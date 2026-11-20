@@ -1,0 +1,12 @@
+Paraveda — mise a jour de la synchronisation Digylog
+
+1. Faites une sauvegarde des fichiers et des donnees avant toute modification.
+2. Remplacez seulement api.php et index.html. Ne remplacez pas crm_data.json, les fichiers de configuration ni les sauvegardes.
+3. Dans Hostinger, modifiez le cron EXISTANT qui appelle api.php?action=digylog_sync pour le lancer toutes les 30 minutes :
+   */30 * * * *
+   Gardez sa commande et son jeton existants; ne creez pas un deuxieme cron.
+4. Le serveur refuse les synchronisations periodiques concurrentes et limite leur demarrage a une fois par 30 minutes, meme si l'ancien cron est encore trop frequent. Configurez le cron correctement pour reduire aussi le nombre de requetes HTTP.
+5. Testez la reception des mises a jour et surveillez les process, erreurs et 403 avec Hostinger. Les processus deja bloques avant la mise a jour ne sont pas arretes par ce correctif.
+6. L'envoi automatique des commandes completes et la synchronisation CRM entre appareils restent independants de ce cron.
+
+La protection 403/CAPTCHA de Hostinger peut intercepter les requetes avant PHP. Ce changement ne garantit pas la suppression du CAPTCHA et ne corrige pas les retries de l'expediteur webhook. Les requetes externes ont des timeouts individuels mais cette mise a jour ne garantit pas une duree maximale stricte de toute la synchronisation.
