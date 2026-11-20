@@ -1,12 +1,9 @@
-Paraveda — mise a jour de la synchronisation Digylog
+Paraveda CRM — Digylog deconnecte, suivi manuel
 
-1. Faites une sauvegarde des fichiers et des donnees avant toute modification.
-2. Remplacez seulement api.php et index.html. Ne remplacez pas crm_data.json, les fichiers de configuration ni les sauvegardes.
-3. Dans Hostinger, modifiez le cron EXISTANT qui appelle api.php?action=digylog_sync pour le lancer toutes les 30 minutes :
-   */30 * * * *
-   Gardez sa commande et son jeton existants; ne creez pas un deuxieme cron.
-4. Le serveur refuse les synchronisations periodiques concurrentes et limite leur demarrage a une fois par 30 minutes, meme si l'ancien cron est encore trop frequent. Configurez le cron correctement pour reduire aussi le nombre de requetes HTTP.
-5. Testez la reception des mises a jour et surveillez les process, erreurs et 403 avec Hostinger. Les processus deja bloques avant la mise a jour ne sont pas arretes par ce correctif.
-6. L'envoi automatique des commandes completes et la synchronisation CRM entre appareils restent independants de ce cron.
-
-La protection 403/CAPTCHA de Hostinger peut intercepter les requetes avant PHP. Ce changement ne garantit pas la suppression du CAPTCHA et ne corrige pas les retries de l'expediteur webhook. Les requetes externes ont des timeouts individuels mais cette mise a jour ne garantit pas une duree maximale stricte de toute la synchronisation.
+1. Sauvegardez les fichiers et les donnees du site avant toute modification.
+2. Remplacez uniquement api.php, index.html et retours.html par les fichiers de cette archive. Ne remplacez pas les donnees CRM, les configurations ou les sauvegardes.
+3. Une commande Confirmee reste dans le CRM et n'est pas envoyee a Digylog. Le statut Expédier vers est une modification manuelle dans Suivie; il ne transmet pas la commande.
+4. La synchronisation automatique des statuts de Digylog et des trackings est egalement desactivee. Renseignez Livrée, Retour et Tracking manuellement.
+5. Les anciennes valeurs ne sont pas modifiees ni effacees automatiquement. Les demandes deja en cours avant deploiement peuvent encore se terminer avec l'ancien code.
+6. Demandez a Hostinger de desactiver le cron digylog_sync et a Digylog de desactiver la livraison des webhooks; le code ne peut pas arreter les demandes a leur source ni empecher le pare-feu de les bloquer avant le CRM.
+7. Rechargez le site et testez une commande de test. La resolution automatique des QR Digylog opaques dans Retours n'est plus disponible; utilisez le tracking deja enregistre dans le CRM.

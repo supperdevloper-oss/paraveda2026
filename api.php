@@ -86,7 +86,7 @@ $SECRET = '8c907fc0f4ffe0b9775a6b7c3c0fc7700e5724c0d78343df';
 /* ---------- نسخة السيرفر ----------
  * كنرجعوها فـ export=version وفـ جواب digylog_sync، باش نعرفو بالضبط
  * أشمن api.php خدام دابا فـ production (ufiq le déploiement ma bditch). */
-define('CRM_API_VERSION', '3.108');
+define('CRM_API_VERSION', '3.109');
 /* جيل المرسل: ملي كيتبدل الكود، كل الطلبيات لي سبقت كتجرب من جديد.
  * (ماشي كيبقاوش محبوسة بـ 20 محاولة قديمة ولا بـ backoff طويل.) */
 define('CRM_DL_SENDER_GEN', 4);
@@ -2282,6 +2282,8 @@ function crm_dl_periodic_sync() {
  *         it only needs a token, so it works right after deployment.
  * $withStatus : false on the fast path (no expensive status polling). */
 function crm_dl_run($dry = false,$forceSentType=null,$includeExisting=false,$withStatus=true,$auto=false) {
+  // Manual-only mode: this is a second server-side safety barrier for all callers.
+  return array('ok'=>true, 'skipped'=>'digylog-disconnected', 'sent'=>0);
   global $LOCK_FILE, $DATA_DIR;
   $c = crm_dl_cfg_get();
   $since   = isset($c['since']) ? (int)$c['since'] : 0;
@@ -2489,7 +2491,13 @@ function crm_dl_hook() {
   if($fh){@flock($fh,LOCK_UN);@fclose($fh);}crm_audit('digylog-hook | tracking='.$tracking.' | num='.$num.' | livraison='.$newLiv.' | changed='.($ok?1:0));
   crm_out(array('ok'=>(bool)$ok,'found'=>true,'changed'=>(bool)$ok,'livraison'=>$newLiv));
 }
-if(isset($_GET['action'])&&$_GET['action']==='digylog_hook')crm_dl_hook();
+// Acknowledge authenticated legacy webhook calls without applying updates;
+// this does not stop the external provider from sending them.
+if(isset($_GET['action']) && $_GET['action']==='digylog_hook') {
+  $tk=isset($_GET['token'])?(string)$_GET['token']:'';
+  if(!hash_equals($SECRET,$tk))crm_out(array('ok'=>false,'err'=>'token'),403);
+  crm_out(array('ok'=>true,'ignored'=>'digylog-disconnected'));
+}
 
 
 /* ================================================================
@@ -2551,6 +2559,8 @@ function crm_returns_digylog_get_url($url,$token) {
   if(!function_exists('curl_init'))return array(0,'','no-curl');$ch=curl_init($url);curl_setopt_array($ch,array(CURLOPT_HTTPHEADER=>array('Accept: application/json, text/plain, */*','Referer: https://seller.digylog.com/','Origin: https://seller.digylog.com','Authorization: Bearer '.$token),CURLOPT_RETURNTRANSFER=>true,CURLOPT_CONNECTTIMEOUT=>8,CURLOPT_TIMEOUT=>20));$body=curl_exec($ch);$err=(string)curl_error($ch);$code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);return array($code,$body===false?'':(string)$body,$err);
 }
 function crm_returns_resolve_qr_tracking($qr,$orders) {
+  // No remote lookup: existing CRM tracking numbers remain usable manually.
+  return array('tracking'=>'','reason'=>'digylog-disconnected');
   $qr=trim((string)$qr);if(!preg_match('/^tk[a-z0-9]{12,80}$/i',$qr))return array('tracking'=>'','reason'=>'not-digylog-qr');
   $known=array();foreach($orders as $o){if(!is_array($o)||!empty($o['_del']))continue;$tr=crm_returns_tracking($o);$n=strtoupper(trim(preg_replace('/\s+/','',$tr)));if($n!=='')$known[$n]=$tr;}
   if(!$known)return array('tracking'=>'','reason'=>'no-crm-trackings');
@@ -2760,7 +2770,7 @@ if ($m === 'GET') {
   // v3.101: cron ديال Digylog: api.php?action=digylog_sync&token=...
   if (isset($_GET['action']) && $_GET['action'] === 'digylog_sync') {
     if (!hash_equals($SECRET, crm_token())) crm_out(array('ok'=>false, 'err'=>'token'), 403);
-    crm_out(crm_dl_periodic_sync());
+    crm_out(array('ok'=>true,'skipped'=>'digylog-disconnected','sent'=>0));
   }
   // v3.41: la lecture exige aussi le token (avant: n'importe qui avec l'URL téléchargeait tous les clients)
   if (!hash_equals($SECRET, crm_token())) crm_out(array('ok'=>false, 'err'=>'token'), 403);
@@ -3050,6 +3060,8 @@ if ($m === 'POST') {
   /* -- actions (Digylog etc.) -- */
   if (isset($b['action'])) {
     $a = (string)$b['action'];
+    // Block all Digylog actions for old cached clients and admin pages too.
+    if (strpos($a, 'digylog') === 0) crm_out(array('ok'=>true,'skipped'=>'digylog-disconnected','sent'=>0));
     if ($a === 'ping') crm_out(array('ok'=>true, 'v'=>'3.83'));
     if ($a === 'restore') crm_out(array('ok'=>false, 'err'=>'restore-not-implemented', 'msg'=>'الاسترجاع كيدار يدوياً من مجلد backups'), 501);
     if ($a === 'sheet_orders') crm_sheet_orders($b);   // v3.97: الشيت → CRM
