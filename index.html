@@ -13,6 +13,7 @@
     <style>
       html, body { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; max-width: 100%; overflow-x: hidden; touch-action: manipulation; }
       input, select, textarea { font-size: 16px; }
+    .pv-wait-page .pv-wait-table{min-width:1100px;table-layout:auto}.pv-wait-page .pv-wait-table th,.pv-wait-page .pv-wait-table td{padding:6px 8px;text-align:left;white-space:nowrap}.pv-wait-page .pv-wait-copy-btn{border:1px solid #94a3b8;border-radius:7px;padding:6px 10px;background:white;font-weight:700}.pv-wait-page .pv-wait-copy-btn.is-copy{background:#047857;color:white;border-color:#047857}.pv-wait-page .pv-wait-copy-btn:disabled{opacity:.45}.pv-wait-page .pv-wait-copy-hint{font-size:12px;color:#475569}
     </style>
     <title>Paraveda</title>
     <link rel="manifest" href="manifest.json" />
@@ -1311,11 +1312,18 @@ s.jsx("div", {
         })
     })
 }
+// Waiting CMD export: tabs and line breaks inside values must not shift Excel columns.
+function __pvWaitingCells(o,stores){return [o.produit,o.qte,o.nom,o.telephone,o.adresse,o.ville,o.prix,__pvBoutique(o.agent,stores),o.remarques].map(v=>String(v??"").replace(/[\t\r\n]+/g," ").trim())}
+function __pvWaitingTsv(rows,stores){return rows.map(o=>__pvWaitingCells(o,stores).join("\t")).join("\r\n")}
 function __PvWaitingCmd({onOpen:e}) {
   const {orders:n}=Xt();
   const today=__pvToday(),yesterday=(()=>{const d=__pvServerDay();d.setDate(d.getDate()-1);return __pvLocalDate(d)})();
   const [q,setQ]=ee.useState("");
   const [day,setDay]=ee.useState(today);
+  const [selected,setSelected]=ee.useState(()=>new Set());
+  const [stores,setStores]=ee.useState({});
+  const [storesError,setStoresError]=ee.useState(false);
+  ee.useEffect(()=>{let alive=true;fetch("api.php?action=boutique_names",{cache:"no-store",headers:{"X-Sync-Token":Rd}}).then(r=>{if(!r.ok)throw Error("stores");return r.json()}).then(j=>{if(!j.ok||!j.stores||typeof j.stores!=="object")throw Error("stores");if(alive)setStores(j.stores)}).catch(()=>{if(alive)setStoresError(true)});return()=>{alive=false}},[]);
   const a=ee.useMemo(()=>n.filter(o=>o&&o._d&&!o._del),[n]);
   const exitDay=o=>{
     const saved=String(o.waitingExitedDate||"").slice(0,10);
@@ -1354,12 +1362,24 @@ function __PvWaitingCmd({onOpen:e}) {
     try{return new Date(x>1e14?Math.floor(x/1e3):x).toLocaleString("fr-MA",{dateStyle:"short",timeStyle:"short"})}catch{return "—"}
   };
   const exitTime=o=>{const x=Number(o.waitingExitedAt)||0;if(!x)return exitDay(o)||"—";try{return new Date(x).toLocaleString("fr-MA",{dateStyle:"short",timeStyle:"short"})}catch{return exitDay(o)||"—"}};
+  const toggle=o=>setSelected(prev=>{const next=new Set(prev);next.has(o.id)?next.delete(o.id):next.add(o.id);return next});
+  const chosen=f.filter(o=>selected.has(o.id));
+  const allVisible=f.length>0&&f.every(o=>selected.has(o.id));
+  const toggleVisible=()=>setSelected(prev=>{const next=new Set(prev);f.forEach(o=>allVisible?next.delete(o.id):next.add(o.id));return next});
+  const copySelected=async()=>{
+    if(!chosen.length)return;
+    const missing=chosen.filter(o=>!__pvBoutique(o.agent,stores)).length;
+    if(missing&&!confirm(`${missing} طلبية ما عندهاش Boutique معروفة. خانة Store غتبقى فارغة. واش تكمل النسخ؟`))return;
+    const text=__pvWaitingTsv(chosen,stores);
+    try{
+      if(navigator.clipboard&&navigator.clipboard.writeText)await navigator.clipboard.writeText(text);
+      else {const el=document.createElement("textarea");el.value=text;el.style.position="fixed";el.style.left="-9999px";document.body.appendChild(el);el.select();const ok=document.execCommand("copy");el.remove();if(!ok)throw Error("copy");}
+      alert(`✅ تنسخو ${chosen.length} طلبية. لصق فـ Excel ابتداءً من الخانة A2.`);
+    }catch(err){alert("ما قدرناش ننسخو. تأكد من صلاحية النسخ وعاود المحاولة.")}
+  };
   const row=(o,x)=>s.jsxs("tr",{className:"pv-wait-row",children:[
-    s.jsx("td",{className:"pv-wait-index",children:x+1}),
-    s.jsx("td",{className:"pv-wait-client",title:o.nom||"",children:o.nom||"—"}),
-    s.jsx("td",{dir:"ltr",className:"pv-wait-phone",children:o.telephone||"—"}),
-    s.jsx("td",{className:"pv-wait-product",title:o.produit||"",children:o.produit||"—"}),
-    s.jsx("td",{dir:"ltr",className:"pv-wait-date",children:c(o)})
+    s.jsx("td",{children:s.jsx("input",{type:"checkbox",checked:selected.has(o.id),onChange:()=>toggle(o),"aria-label":`تحديد طلبية ${o.nom||x+1}`})}),
+    ...__pvWaitingCells(o,stores).map((value,idx)=>s.jsx("td",{dir:"auto",title:value,children:value||(idx===7?(storesError?"Erreur de chargement":"Non renseignée"):"—")},idx))
   ]},o.id);
   const card=({agent:m,rows:h})=>s.jsxs("section",{className:"pv-wait-agent",children:[
     s.jsxs("header",{className:"pv-wait-agent-head",children:[
@@ -1370,8 +1390,8 @@ function __PvWaitingCmd({onOpen:e}) {
       ]}),
       m!=="بلا وكيلة"&&s.jsx("button",{type:"button",onClick:()=>e(m),className:"pv-wait-open",children:"فتح صفحة البنت ←"})
     ]}),
-    s.jsx("div",{className:"pv-wait-table-scroll",children:s.jsxs("table",{className:"pv-wait-table",children:[
-      s.jsx("thead",{className:"pv-wait-thead",children:s.jsx("tr",{children:["#","الزبون","الهاتف","المنتوج","التاريخ"].map(t=>s.jsx("th",{className:"pv-wait-th",children:t},t))})}),
+    s.jsx("div",{className:"pv-wait-table-scroll",children:s.jsxs("table",{className:"pv-wait-table",dir:"ltr",children:[
+      s.jsx("thead",{className:"pv-wait-thead",children:s.jsxs("tr",{children:[s.jsx("th",{className:"pv-wait-th",children:"✓"}),...["Product","Quantity","Customer","Phone","Address","City","Price","Store","Note"].map(t=>s.jsx("th",{className:"pv-wait-th",children:t},t))]})}),
       s.jsx("tbody",{children:h.map(row)})
     ]})})
   ]},m);
@@ -1420,7 +1440,10 @@ function __PvWaitingCmd({onOpen:e}) {
   ]});
   const toolbar=a.length?s.jsxs("div",{className:"pv-wait-toolbar",children:[
     s.jsxs("div",{className:"pv-wait-search",children:[s.jsx("span",{children:"⌕"}),s.jsx("input",{value:q,onChange:v=>setQ(v.target.value),placeholder:"قلب بالبنت، الزبون، الهاتف، المنتوج أو المدينة…"}),q&&s.jsx("button",{type:"button",onClick:()=>setQ(""),children:"×"})]}),
-    s.jsxs("span",{className:"pv-wait-result-count",children:[f.length," من ",a.length," طلبية"]})
+    s.jsxs("span",{className:"pv-wait-result-count",children:[f.length," من ",a.length," طلبية · ",chosen.length," محددة"]}),
+    s.jsx("button",{type:"button",className:"pv-wait-copy-btn",onClick:toggleVisible,disabled:!f.length,children:allVisible?"إلغاء تحديد الظاهر":"تحديد كل الظاهر"}),
+    s.jsx("button",{type:"button",className:"pv-wait-copy-btn is-copy",onClick:copySelected,disabled:!chosen.length,children:`📋 نسخ المحدد لـ Excel (${chosen.length})`}),
+    s.jsx("span",{className:"pv-wait-copy-hint",children:"لصق فـ Excel من A2؛ خَلّي عمود Phone بصيغة Texte باش يبقى الصفر الأول."})
   ]}):null;
   const noResults=s.jsx("div",{className:"pv-wait-empty is-search",children:s.jsxs("div",{children:[s.jsx("div",{className:"text-4xl",children:"🔎"}),s.jsx("h2",{children:"ما لقينا حتى نتيجة"}),s.jsx("button",{type:"button",onClick:()=>setQ(""),children:"مسح البحث"})]})});
   const empty=s.jsx("div",{className:"pv-wait-empty",children:s.jsxs("div",{children:[
