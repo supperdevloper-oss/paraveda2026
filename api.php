@@ -86,7 +86,7 @@ $SECRET = '8c907fc0f4ffe0b9775a6b7c3c0fc7700e5724c0d78343df';
 /* ---------- نسخة السيرفر ----------
  * كنرجعوها فـ export=version وفـ جواب digylog_sync، باش نعرفو بالضبط
  * أشمن api.php خدام دابا فـ production (ufiq le déploiement ma bditch). */
-define('CRM_API_VERSION', '3.109');
+define('CRM_API_VERSION', '3.110');
 /* جيل المرسل: ملي كيتبدل الكود، كل الطلبيات لي سبقت كتجرب من جديد.
  * (ماشي كيبقاوش محبوسة بـ 20 محاولة قديمة ولا بـ backoff طويل.) */
 define('CRM_DL_SENDER_GEN', 4);
@@ -2056,6 +2056,7 @@ function crm_delivery_sync_batch($limit=20,$onlyTracking='') {
 /* Dedicated automatic status heartbeat, independent from Tracking import and
  * shared by every open CRM device. At most one batch runs every 45 seconds. */
 function crm_delivery_auto_guarded() {
+  return array('ok'=>true,'skipped'=>'digylog-disconnected','updated'=>0);
   global $DATA_DIR;
   $lock=@fopen($DATA_DIR.'/.delivery-auto.lock','c');
   if(!$lock||!@flock($lock,LOCK_EX|LOCK_NB)){if($lock)@fclose($lock);return array('ok'=>true,'skipped'=>'busy','updated'=>0);}
@@ -2775,9 +2776,21 @@ if ($m === 'GET') {
   // v3.41: la lecture exige aussi le token (avant: n'importe qui avec l'URL téléchargeait tous les clients)
   if (!hash_equals($SECRET, crm_token())) crm_out(array('ok'=>false, 'err'=>'token'), 403);
 
-  /* Guaranteed automatic fallback: every CRM snapshot can start one throttled
-     status batch, even when an old cached index lacks the heartbeat script. */
-  if (!isset($_GET['export']) && !isset($_GET['pushkey'])) { crm_dl_send_guarded(); crm_delivery_auto_guarded(); }
+  // Read locally saved boutique names only; never contact Digylog or return credentials.
+  if (isset($_GET['action']) && $_GET['action'] === 'boutique_names') {
+    $stores = array();
+    foreach (crm_dl_cfg_paths() as $path) {
+      $cfg = json_decode((string)@file_get_contents($path), true);
+      if (!is_array($cfg) || !isset($cfg['stores']) || !is_array($cfg['stores'])) continue;
+      foreach ($cfg['stores'] as $agent => $name) {
+        if (!is_string($agent) || !is_string($name)) continue;
+        $agent = trim($agent); $name = trim($name);
+        if ($agent !== '' && $name !== '' && !isset($stores[$agent])) $stores[$agent] = $name;
+      }
+    }
+    crm_out(array('ok'=>true, 'stores'=>$stores));
+  }
+  // No Digylog sender or delivery heartbeat on ordinary CRM reads.
 
   /* PERF v3.90 — أهم إصلاح فالسيرفر.
    * قبل: كل جهاز كيدير GET كل 5 ثواني وكيحمّل 1.1MB حتى إلا ما تبدل والو.
